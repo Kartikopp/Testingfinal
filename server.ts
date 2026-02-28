@@ -51,7 +51,17 @@ db.exec(`
     full_name TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
 `);
+
+// Initialize default settings
+const insertSetting = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
+insertSetting.run("upi_id", "glitchxkartik@oksbi");
+insertSetting.run("site_name", "Gupta Classes Meerut");
 
 // Seed data if empty
 const courseCount = db.prepare("SELECT COUNT(*) as count FROM courses").get() as { count: number };
@@ -244,9 +254,30 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  app.patch("/api/admin/orders/:id/status", isAdmin, (req, res) => {
+    const { status } = req.body;
+    db.prepare("UPDATE orders SET status = ? WHERE id = ?").run(status, req.params.id);
+    res.json({ success: true });
+  });
+
   app.get("/api/admin/students", isAdmin, (req, res) => {
     const students = db.prepare("SELECT id, email, full_name, created_at FROM students ORDER BY created_at DESC").all();
     res.json(students);
+  });
+
+  app.get("/api/settings", (req, res) => {
+    const settings = db.prepare("SELECT * FROM settings").all();
+    const settingsObj = settings.reduce((acc: any, curr: any) => {
+      acc[curr.key] = curr.value;
+      return acc;
+    }, {});
+    res.json(settingsObj);
+  });
+
+  app.post("/api/admin/settings", isAdmin, (req, res) => {
+    const { key, value } = req.body;
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value);
+    res.json({ success: true });
   });
 
   // Vite middleware for development

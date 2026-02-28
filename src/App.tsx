@@ -69,12 +69,18 @@ export default function App() {
   const [adminSortBy, setAdminSortBy] = useState<keyof Course>("title");
   const [adminSortOrder, setAdminSortOrder] = useState<'asc' | 'desc'>('asc');
   const [adminCategoryFilter, setAdminCategoryFilter] = useState("All");
+  const [adminActiveTab, setAdminActiveTab] = useState<'overview' | 'courses' | 'orders' | 'students' | 'settings'>('overview');
   const [courseImage, setCourseImage] = useState<string | null>(null);
+  const [settings, setSettings] = useState<any>({ upi_id: 'glitchxkartik@oksbi', site_name: 'Gupta Classes Meerut' });
 
   useEffect(() => {
     fetch('/api/courses')
       .then(res => res.json())
       .then(data => setCourses(data));
+
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => setSettings(data));
 
     // Check if already logged in as admin
     fetch('/api/admin/me')
@@ -117,6 +123,10 @@ export default function App() {
       fetch('/api/admin/students')
         .then(res => res.json())
         .then(data => setAdminStudents(data));
+
+      fetch('/api/settings')
+        .then(res => res.json())
+        .then(data => setSettings(data));
     }
   }, [view, admin]);
 
@@ -149,7 +159,7 @@ export default function App() {
       if (response.ok) {
         const data = await response.json();
         setCurrentOrderId(data.orderId);
-        const upiUrl = `upi://pay?pa=${GPAY_ID}&pn=Gupta%20Classes&am=${selectedCourse.price}&cu=INR&tn=Course%20Purchase%20${selectedCourse.id}`;
+        const upiUrl = `upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.site_name)}&am=${selectedCourse.price}&cu=INR&tn=Course%20Purchase%20${selectedCourse.id}`;
         setOrderComplete(true);
         
         // Open UPI link
@@ -386,277 +396,364 @@ export default function App() {
     }
   };
 
+  const handleUpdateOrderStatus = async (orderId: number, status: string) => {
+    const res = await fetch(`/api/admin/orders/${orderId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    if (res.ok) {
+      setAdminOrders(adminOrders.map(o => o.id === orderId ? { ...o, status } : o));
+    }
+  };
+
+  const handleUpdateSetting = async (key: string, value: string) => {
+    const res = await fetch('/api/admin/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value })
+    });
+    if (res.ok) {
+      setSettings({ ...settings, [key]: value });
+    }
+  };
+
   const AdminDashboardView = () => (
-    <div className="py-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="flex justify-between items-center mb-12">
-        <div>
-          <h1 className="text-3xl font-black text-stone-900">Admin Dashboard</h1>
-          <p className="text-stone-500">Welcome back, {admin?.username}</p>
+    <div className="min-h-screen bg-stone-50 flex">
+      {/* Sidebar */}
+      <div className="w-64 bg-stone-900 text-white flex flex-col sticky top-0 h-screen">
+        <div className="p-8">
+          <div className="flex items-center gap-2 mb-12">
+            <div className="bg-emerald-600 p-2 rounded-lg">
+              <GraduationCap className="text-white w-6 h-6" />
+            </div>
+            <span className="text-xl font-bold tracking-tight">Admin <span className="text-emerald-500">Panel</span></span>
+          </div>
+
+          <nav className="space-y-2">
+            {[
+              { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+              { id: 'courses', label: 'Courses', icon: BookOpen },
+              { id: 'orders', label: 'Orders', icon: Package },
+              { id: 'students', label: 'Students', icon: Users },
+              { id: 'settings', label: 'Settings', icon: Smartphone },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setAdminActiveTab(item.id as any)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                  adminActiveTab === item.id 
+                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' 
+                    : 'text-stone-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <item.icon className="w-4 h-4" />
+                {item.label}
+              </button>
+            ))}
+          </nav>
         </div>
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => setView('home')}
-            className="text-stone-500 hover:text-stone-900 font-bold transition-colors text-sm"
-          >
-            Back to Site
-          </button>
+
+        <div className="mt-auto p-8 border-t border-white/5">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-stone-800 rounded-full flex items-center justify-center text-stone-400 font-bold">
+              {admin?.username.charAt(0).toUpperCase()}
+            </div>
+            <div className="overflow-hidden">
+              <div className="text-sm font-bold truncate">{admin?.username}</div>
+              <div className="text-[10px] text-stone-500 uppercase tracking-widest">Administrator</div>
+            </div>
+          </div>
           <button 
             onClick={handleAdminLogout}
-            className="flex items-center gap-2 text-stone-500 hover:text-red-600 font-bold transition-colors text-sm"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-red-400 hover:bg-red-400/10 transition-all"
           >
-            <LogOut className="w-5 h-5" /> Logout
+            <LogOut className="w-4 h-4" /> Logout
           </button>
         </div>
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid md:grid-cols-5 gap-6 mb-12">
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
-          <div className="text-stone-400 text-xs font-bold uppercase tracking-wider mb-2">Total Revenue</div>
-          <div className="text-3xl font-black text-stone-900 mb-4">₹{orderStats.revenue.toLocaleString()}</div>
-          <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
-            <motion.div 
-              initial={{ width: 0 }}
-              animate={{ width: '100%' }}
-              className="h-full bg-emerald-500"
-            />
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-12 max-w-6xl mx-auto">
+          <div className="flex justify-between items-center mb-12">
+            <h1 className="text-3xl font-black text-stone-900 capitalize">{adminActiveTab}</h1>
+            <button 
+              onClick={() => setView('home')}
+              className="text-stone-500 hover:text-stone-900 font-bold transition-colors text-sm flex items-center gap-2"
+            >
+              <ArrowRight className="w-4 h-4 rotate-180" /> Back to Website
+            </button>
           </div>
-        </div>
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
-          <div className="text-stone-400 text-xs font-bold uppercase tracking-wider mb-2">Total Students</div>
-          <div className="text-3xl font-black text-stone-900 mb-4">{adminStudents.length}</div>
-          <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
-            <motion.div 
-              initial={{ width: 0 }}
-              animate={{ width: '100%' }}
-              className="h-full bg-blue-500"
-            />
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
-          <div className="text-stone-400 text-xs font-bold uppercase tracking-wider mb-2">Completed Orders</div>
-          <div className="flex justify-between items-end mb-2">
-            <div className="text-3xl font-black text-stone-900">{orderStats.completed}</div>
-            <div className="text-xs font-bold text-emerald-600">{orderStats.total > 0 ? Math.round((orderStats.completed / orderStats.total) * 100) : 0}%</div>
-          </div>
-          <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
-            <motion.div 
-              initial={{ width: 0 }}
-              animate={{ width: `${orderStats.total > 0 ? (orderStats.completed / orderStats.total) * 100 : 0}%` }}
-              className="h-full bg-emerald-500"
-            />
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
-          <div className="text-stone-400 text-xs font-bold uppercase tracking-wider mb-2">Pending Orders</div>
-          <div className="flex justify-between items-end mb-2">
-            <div className="text-3xl font-black text-stone-900">{orderStats.pending}</div>
-            <div className="text-xs font-bold text-amber-600">{orderStats.total > 0 ? Math.round((orderStats.pending / orderStats.total) * 100) : 0}%</div>
-          </div>
-          <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
-            <motion.div 
-              initial={{ width: 0 }}
-              animate={{ width: `${orderStats.total > 0 ? (orderStats.pending / orderStats.total) * 100 : 0}%` }}
-              className="h-full bg-amber-500"
-            />
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
-          <div className="text-stone-400 text-xs font-bold uppercase tracking-wider mb-2">Failed Orders</div>
-          <div className="flex justify-between items-end mb-2">
-            <div className="text-3xl font-black text-stone-900">{orderStats.failed}</div>
-            <div className="text-xs font-bold text-red-600">{orderStats.total > 0 ? Math.round((orderStats.failed / orderStats.total) * 100) : 0}%</div>
-          </div>
-          <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
-            <motion.div 
-              initial={{ width: 0 }}
-              animate={{ width: `${orderStats.total > 0 ? (orderStats.failed / orderStats.total) * 100 : 0}%` }}
-              className="h-full bg-red-500"
-            />
-          </div>
-        </div>
-      </div>
 
-      <div className="grid lg:grid-cols-3 gap-12">
-        {/* Course Management */}
-        <div className="lg:col-span-2 space-y-8">
-          <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-stone-100 space-y-4">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-emerald-600" /> Manage Courses
-                </h2>
-                <button 
-                  onClick={() => {
-                    setIsAddingCourse(true);
-                    setEditingCourse(null);
-                    setCourseImage(null);
-                  }}
-                  className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" /> Add Course
-                </button>
-              </div>
-              
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
-                  <input 
-                    type="text" 
-                    placeholder="Search courses..." 
-                    className="w-full pl-10 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                    value={adminSearchQuery}
-                    onChange={(e) => setAdminSearchQuery(e.target.value)}
-                  />
+          {adminActiveTab === 'overview' && (
+            <div className="space-y-12">
+              <div className="grid grid-cols-5 gap-6">
+                <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
+                  <div className="text-stone-400 text-xs font-bold uppercase tracking-wider mb-2">Total Revenue</div>
+                  <div className="text-3xl font-black text-stone-900 mb-4">₹{orderStats.revenue.toLocaleString()}</div>
+                  <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+                    <motion.div initial={{ width: 0 }} animate={{ width: '100%' }} className="h-full bg-emerald-500" />
+                  </div>
                 </div>
-                <select 
-                  className="bg-stone-50 border border-stone-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  value={adminCategoryFilter}
-                  onChange={(e) => setAdminCategoryFilter(e.target.value)}
-                >
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
+                  <div className="text-stone-400 text-xs font-bold uppercase tracking-wider mb-2">Total Students</div>
+                  <div className="text-3xl font-black text-stone-900 mb-4">{adminStudents.length}</div>
+                  <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+                    <motion.div initial={{ width: 0 }} animate={{ width: '100%' }} className="h-full bg-blue-500" />
+                  </div>
+                </div>
+                <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
+                  <div className="text-stone-400 text-xs font-bold uppercase tracking-wider mb-2">Completed</div>
+                  <div className="text-3xl font-black text-stone-900 mb-4">{orderStats.completed}</div>
+                  <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${orderStats.total > 0 ? (orderStats.completed / orderStats.total) * 100 : 0}%` }} className="h-full bg-emerald-500" />
+                  </div>
+                </div>
+                <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
+                  <div className="text-stone-400 text-xs font-bold uppercase tracking-wider mb-2">Pending</div>
+                  <div className="text-3xl font-black text-stone-900 mb-4">{orderStats.pending}</div>
+                  <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${orderStats.total > 0 ? (orderStats.pending / orderStats.total) * 100 : 0}%` }} className="h-full bg-amber-500" />
+                  </div>
+                </div>
+                <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
+                  <div className="text-stone-400 text-xs font-bold uppercase tracking-wider mb-2">Failed</div>
+                  <div className="text-3xl font-black text-stone-900 mb-4">{orderStats.failed}</div>
+                  <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${orderStats.total > 0 ? (orderStats.failed / orderStats.total) * 100 : 0}%` }} className="h-full bg-red-500" />
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-stone-50 text-stone-400 text-xs font-bold uppercase tracking-wider">
-                  <tr>
-                    <th className="px-6 py-4 cursor-pointer hover:text-stone-900 transition-colors" onClick={() => {
-                      if (adminSortBy === 'title') setAdminSortOrder(adminSortOrder === 'asc' ? 'desc' : 'asc');
-                      else { setAdminSortBy('title'); setAdminSortOrder('asc'); }
-                    }}>
-                      Course {adminSortBy === 'title' && (adminSortOrder === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="px-6 py-4 cursor-pointer hover:text-stone-900 transition-colors" onClick={() => {
-                      if (adminSortBy === 'category') setAdminSortOrder(adminSortOrder === 'asc' ? 'desc' : 'asc');
-                      else { setAdminSortBy('category'); setAdminSortOrder('asc'); }
-                    }}>
-                      Category {adminSortBy === 'category' && (adminSortOrder === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="px-6 py-4 cursor-pointer hover:text-stone-900 transition-colors" onClick={() => {
-                      if (adminSortBy === 'price') setAdminSortOrder(adminSortOrder === 'asc' ? 'desc' : 'asc');
-                      else { setAdminSortBy('price'); setAdminSortOrder('asc'); }
-                    }}>
-                      Price {adminSortBy === 'price' && (adminSortOrder === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="px-6 py-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100">
-                  {adminFilteredCourses.map(course => (
-                    <tr key={course.id} className="hover:bg-stone-50/50 transition-colors">
-                      <td className="px-6 py-4">
+
+              <div className="grid lg:grid-cols-2 gap-8">
+                <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
+                  <div className="p-6 border-b border-stone-100 flex justify-between items-center">
+                    <h2 className="font-bold text-stone-900">Recent Activity</h2>
+                    <button onClick={() => setAdminActiveTab('orders')} className="text-emerald-600 text-xs font-bold hover:underline">View All</button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    {adminOrders.slice(0, 5).map(order => (
+                      <div key={order.id} className="flex items-center justify-between py-2">
                         <div className="flex items-center gap-3">
-                          <img src={course.image_url} className="w-10 h-10 rounded-lg object-cover" alt="" referrerPolicy="no-referrer" />
-                          <span className="font-bold text-stone-900 text-sm">{course.title}</span>
+                          <div className={`w-2 h-2 rounded-full ${order.status === 'completed' ? 'bg-emerald-500' : order.status === 'failed' ? 'bg-red-500' : 'bg-amber-500'}`} />
+                          <div>
+                            <div className="text-sm font-bold text-stone-900">{order.customer_email}</div>
+                            <div className="text-[10px] text-stone-400 uppercase font-bold">{order.course_title}</div>
+                          </div>
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="px-2 py-1 bg-stone-100 text-stone-600 text-[10px] font-bold rounded-md uppercase">{course.category}</span>
-                      </td>
-                      <td className="px-6 py-4 font-bold text-stone-900 text-sm">₹{course.price.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button 
-                            onClick={() => {
-                              setEditingCourse(course);
-                              setIsAddingCourse(true);
-                              setCourseImage(course.image_url);
-                            }}
-                            className="p-2 text-stone-400 hover:text-emerald-600 transition-colors"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteCourse(course.id)}
-                            className="p-2 text-stone-400 hover:text-red-600 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        <div className="text-sm font-bold text-stone-900">₹{order.amount}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
+                  <div className="p-6 border-b border-stone-100 flex justify-between items-center">
+                    <h2 className="font-bold text-stone-900">New Students</h2>
+                    <button onClick={() => setAdminActiveTab('students')} className="text-emerald-600 text-xs font-bold hover:underline">View All</button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    {adminStudents.slice(0, 5).map(s => (
+                      <div key={s.id} className="flex items-center justify-between py-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-stone-100 rounded-full flex items-center justify-center text-xs font-bold text-stone-600">
+                            {s.full_name.charAt(0)}
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-stone-900">{s.full_name}</div>
+                            <div className="text-[10px] text-stone-400 uppercase font-bold">{s.email}</div>
+                          </div>
                         </div>
-                      </td>
+                        <div className="text-[10px] text-stone-400 font-bold">{new Date(s.created_at).toLocaleDateString()}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {adminActiveTab === 'courses' && (
+            <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-stone-100 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xl font-bold text-stone-900">Manage Courses</h2>
+                  <button 
+                    onClick={() => { setIsAddingCourse(true); setEditingCourse(null); setCourseImage(null); }}
+                    className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" /> Add Course
+                  </button>
+                </div>
+                <div className="flex gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
+                    <input 
+                      type="text" placeholder="Search courses..." 
+                      className="w-full pl-10 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      value={adminSearchQuery} onChange={(e) => setAdminSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  <select 
+                    className="bg-stone-50 border border-stone-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    value={adminCategoryFilter} onChange={(e) => setAdminCategoryFilter(e.target.value)}
+                  >
+                    {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-stone-50 text-stone-400 text-xs font-bold uppercase tracking-wider">
+                    <tr>
+                      <th className="px-6 py-4">Course</th>
+                      <th className="px-6 py-4">Category</th>
+                      <th className="px-6 py-4">Price</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {adminFilteredCourses.map(course => (
+                      <tr key={course.id} className="hover:bg-stone-50/50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <img src={course.image_url} className="w-10 h-10 rounded-lg object-cover" alt="" referrerPolicy="no-referrer" />
+                            <span className="font-bold text-stone-900 text-sm">{course.title}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="px-2 py-1 bg-stone-100 text-stone-600 text-[10px] font-bold rounded-md uppercase">{course.category}</span>
+                        </td>
+                        <td className="px-6 py-4 font-bold text-stone-900 text-sm">₹{course.price.toLocaleString()}</td>
+                        <td className="px-6 py-4 text-right space-x-2">
+                          <button onClick={() => { setEditingCourse(course); setIsAddingCourse(true); setCourseImage(course.image_url); }} className="p-2 text-stone-400 hover:text-emerald-600 transition-colors"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => handleDeleteCourse(course.id)} className="p-2 text-stone-400 hover:text-red-600 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* Recent Orders */}
-        <div className="space-y-8">
-          <div className="bg-stone-50 rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-stone-100 bg-white">
-              <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
-                <Package className="w-5 h-5 text-emerald-600" /> Recent Orders
-              </h2>
+          {adminActiveTab === 'orders' && (
+            <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-stone-100">
+                <h2 className="text-xl font-bold text-stone-900">Order History</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-stone-50 text-stone-400 text-xs font-bold uppercase tracking-wider">
+                    <tr>
+                      <th className="px-6 py-4">Order ID</th>
+                      <th className="px-6 py-4">Customer</th>
+                      <th className="px-6 py-4">Course</th>
+                      <th className="px-6 py-4">Amount</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {adminOrders.map(order => (
+                      <tr key={order.id} className="hover:bg-stone-50/50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-bold text-stone-400">#{order.id}</td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm font-bold text-stone-900">{order.customer_email}</div>
+                          <div className="text-[10px] text-stone-400">{new Date(order.created_at).toLocaleString()}</div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-stone-600">{order.course_title}</td>
+                        <td className="px-6 py-4 text-sm font-bold text-stone-900">₹{order.amount}</td>
+                        <td className="px-6 py-4">
+                          <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full ${
+                            order.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 
+                            order.status === 'failed' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {order.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <select 
+                            value={order.status}
+                            onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
+                            className="bg-stone-50 border border-stone-200 rounded-lg px-2 py-1 text-xs font-bold focus:outline-none"
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="completed">Completed</option>
+                            <option value="failed">Failed</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="p-6 space-y-6 max-h-[800px] overflow-y-auto">
-              {adminOrders.map(order => (
-                <div key={order.id} className="flex flex-col gap-2 p-4 bg-white rounded-2xl border border-stone-100 shadow-sm">
-                  <div className="flex justify-between items-start">
-                    <span className="text-xs font-bold text-stone-400">Order #{order.id}</span>
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                      order.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 
-                      order.status === 'failed' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                    }`}>
-                      {order.status}
-                    </span>
-                  </div>
-                  <h4 className="font-bold text-stone-900 text-sm">{order.course_title}</h4>
-                  <div className="flex items-center gap-2 text-xs text-stone-500">
-                    <Mail className="w-3 h-3" /> {order.customer_email}
-                  </div>
-                  <div className="flex justify-between items-center mt-2 pt-2 border-t border-stone-200/50">
-                    <span className="text-xs text-stone-400">{new Date(order.created_at).toLocaleDateString()}</span>
-                    <span className="font-bold text-stone-900">₹{order.amount.toLocaleString()}</span>
-                  </div>
-                </div>
-              ))}
-              {adminOrders.length === 0 && (
-                <div className="text-center py-12 text-stone-400">
-                  <Package className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                  <p>No orders yet</p>
-                </div>
-              )}
-            </div>
-          </div>
+          )}
 
-          <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-stone-100">
-              <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
-                <Users className="w-5 h-5 text-emerald-600" /> Registered Students
-              </h2>
+          {adminActiveTab === 'students' && (
+            <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-stone-100">
+                <h2 className="text-xl font-bold text-stone-900">Registered Students</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-stone-50 text-stone-400 text-xs font-bold uppercase tracking-wider">
+                    <tr>
+                      <th className="px-6 py-4">Student</th>
+                      <th className="px-6 py-4">Email</th>
+                      <th className="px-6 py-4">Joined Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {adminStudents.map(s => (
+                      <tr key={s.id} className="hover:bg-stone-50/50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 font-bold text-xs">
+                              {s.full_name.charAt(0)}
+                            </div>
+                            <span className="font-bold text-stone-900 text-sm">{s.full_name}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-stone-600">{s.email}</td>
+                        <td className="px-6 py-4 text-sm text-stone-400">{new Date(s.created_at).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="p-6 space-y-4 max-h-[400px] overflow-y-auto">
-              {adminStudents.map(s => (
-                <div key={s.id} className="flex items-center justify-between p-4 bg-stone-50 rounded-2xl border border-stone-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 font-bold">
-                      {s.full_name.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="font-bold text-stone-900 text-sm">{s.full_name}</div>
-                      <div className="text-xs text-stone-500">{s.email}</div>
-                    </div>
+          )}
+
+          {adminActiveTab === 'settings' && (
+            <div className="max-w-2xl space-y-8">
+              <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden p-8">
+                <h2 className="text-xl font-bold text-stone-900 mb-8">Site Configuration</h2>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-400 uppercase tracking-wider mb-2">Site Name</label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      value={settings.site_name}
+                      onChange={(e) => handleUpdateSetting('site_name', e.target.value)}
+                    />
                   </div>
-                  <div className="text-right">
-                    <div className="text-[10px] font-bold text-stone-400 uppercase">Joined</div>
-                    <div className="text-xs text-stone-900">{new Date(s.created_at).toLocaleDateString()}</div>
+                  <div>
+                    <label className="block text-xs font-bold text-stone-400 uppercase tracking-wider mb-2">UPI ID (for GPay/PhonePe)</label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      value={settings.upi_id}
+                      onChange={(e) => handleUpdateSetting('upi_id', e.target.value)}
+                    />
+                    <p className="text-[10px] text-stone-400 mt-2">This ID will be used to generate payment links for students.</p>
                   </div>
                 </div>
-              ))}
-              {adminStudents.length === 0 && (
-                <div className="text-center py-12 text-stone-400">
-                  <Users className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                  <p>No students registered yet</p>
-                </div>
-              )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -851,7 +948,7 @@ export default function App() {
               <div className="bg-emerald-600 p-2 rounded-lg">
                 <GraduationCap className="text-white w-6 h-6" />
               </div>
-              <span className="text-xl font-bold tracking-tight text-stone-800">Gupta Classes <span className="text-emerald-600">Meerut</span></span>
+              <span className="text-xl font-bold tracking-tight text-stone-800">{settings.site_name.split(' ').slice(0, -1).join(' ')} <span className="text-emerald-600">{settings.site_name.split(' ').slice(-1)}</span></span>
             </div>
             <div className="hidden md:flex items-center gap-8 text-sm font-medium text-stone-600">
               <button 
@@ -1296,7 +1393,7 @@ export default function App() {
                 <div className="bg-emerald-600 p-2 rounded-lg">
                   <GraduationCap className="text-white w-5 h-5" />
                 </div>
-                <span className="text-lg font-bold tracking-tight text-stone-800">Gupta Classes</span>
+                <span className="text-lg font-bold tracking-tight text-stone-800">{settings.site_name}</span>
               </div>
               <p className="text-stone-500 text-sm leading-relaxed mb-6">
                 Empowering students with quality education and expert mentorship for over two decades in Meerut.
@@ -1350,7 +1447,7 @@ export default function App() {
             </div>
           </div>
           <div className="pt-8 border-t border-stone-100 text-center text-stone-400 text-xs">
-            © 2026 Gupta Classes Meerut. All rights reserved. Designed for Excellence.
+            © 2026 {settings.site_name}. All rights reserved. Designed for Excellence.
           </div>
         </div>
       </footer>
@@ -1513,7 +1610,7 @@ export default function App() {
                           </div>
                           <div className="flex justify-between">
                             <span className="text-xs text-stone-500">Merchant</span>
-                            <span className="text-sm font-bold text-stone-900">Gupta Classes</span>
+                            <span className="text-sm font-bold text-stone-900">{settings.site_name}</span>
                           </div>
                         </div>
 
