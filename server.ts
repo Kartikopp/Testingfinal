@@ -11,6 +11,7 @@ const __dirname = path.dirname(__filename);
 declare module "express-session" {
   interface SessionData {
     adminId: number;
+    studentId: number;
   }
 }
 
@@ -41,6 +42,14 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS students (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
 
@@ -88,6 +97,50 @@ async function startServer() {
       res.status(401).json({ error: "Unauthorized" });
     }
   };
+
+  // Student Auth Routes
+  app.post("/api/student/signup", (req, res) => {
+    const { email, password, fullName } = req.body;
+    try {
+      const info = db.prepare("INSERT INTO students (email, password, full_name) VALUES (?, ?, ?)").run(email, password, fullName);
+      req.session.studentId = info.lastInsertRowid as number;
+      res.json({ success: true, user: { email, fullName } });
+    } catch (e) {
+      res.status(400).json({ error: "Email already exists" });
+    }
+  });
+
+  app.post("/api/student/login", (req, res) => {
+    const { email, password } = req.body;
+    const student = db.prepare("SELECT * FROM students WHERE email = ? AND password = ?").get(email, password) as any;
+    if (student) {
+      req.session.studentId = student.id;
+      res.json({ success: true, user: { email: student.email, fullName: student.full_name } });
+    } else {
+      res.status(401).json({ error: "Invalid credentials" });
+    }
+  });
+
+  app.get("/api/student/me", (req, res) => {
+    if (req.session.studentId) {
+      const student = db.prepare("SELECT email, full_name FROM students WHERE id = ?").get(req.session.studentId) as any;
+      res.json(student);
+    } else {
+      res.status(401).json({ error: "Not logged in" });
+    }
+  });
+
+  app.get("/api/student/courses", (req, res) => {
+    if (!req.session.studentId) return res.status(401).json({ error: "Unauthorized" });
+    const student = db.prepare("SELECT email FROM students WHERE id = ?").get(req.session.studentId) as any;
+    const courses = db.prepare(`
+      SELECT courses.* 
+      FROM courses 
+      JOIN orders ON courses.id = orders.course_id 
+      WHERE orders.customer_email = ? AND orders.status = 'completed'
+    `).all(student.email);
+    res.json(courses);
+  });
 
   // Auth Routes
   app.post("/api/admin/login", (req, res) => {
@@ -189,6 +242,11 @@ async function startServer() {
   app.delete("/api/admin/courses/:id", isAdmin, (req, res) => {
     db.prepare("DELETE FROM courses WHERE id = ?").run(req.params.id);
     res.json({ success: true });
+  });
+
+  app.get("/api/admin/students", isAdmin, (req, res) => {
+    const students = db.prepare("SELECT id, email, full_name, created_at FROM students ORDER BY created_at DESC").all();
+    res.json(students);
   });
 
   // Vite middleware for development

@@ -28,9 +28,17 @@ import {
   CreditCard,
   Building2,
   Smartphone,
-  Upload
+  Upload,
+  User,
+  PlayCircle,
+  FileText
 } from 'lucide-react';
 import { Course, Order, Admin } from './types';
+
+interface Student {
+  email: string;
+  full_name: string;
+}
 
 const GPAY_ID = "glitchxkartik@oksbi";
 
@@ -46,9 +54,14 @@ export default function App() {
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'card' | 'netbanking'>('upi');
   const [utr, setUtr] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [view, setView] = useState<'home' | 'catalog' | 'admin-login' | 'admin-dashboard'>('home');
+  const [view, setView] = useState<'home' | 'catalog' | 'admin-login' | 'admin-dashboard' | 'student-login' | 'student-dashboard' | 'course-content'>('home');
+  const [selectedCourseContent, setSelectedCourseContent] = useState<Course | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [admin, setAdmin] = useState<Admin | null>(null);
+  const [adminStudents, setAdminStudents] = useState<any[]>([]);
+  const [student, setStudent] = useState<Student | null>(null);
+  const [studentCourses, setStudentCourses] = useState<Course[]>([]);
+  const [isSignup, setIsSignup] = useState(false);
   const [adminOrders, setAdminOrders] = useState<Order[]>([]);
   const [isAddingCourse, setIsAddingCourse] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
@@ -74,13 +87,36 @@ export default function App() {
         if (view === 'admin-login') setView('admin-dashboard');
       })
       .catch(() => {});
+    // Check if already logged in as student
+    fetch('/api/student/me')
+      .then(res => {
+        if (res.ok) return res.json();
+        throw new Error();
+      })
+      .then(data => {
+        setStudent(data);
+        setEmail(data.email);
+      })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (view === 'student-dashboard' && student) {
+      fetch('/api/student/courses')
+        .then(res => res.json())
+        .then(data => setStudentCourses(data));
+    }
+  }, [view, student]);
 
   useEffect(() => {
     if (view === 'admin-dashboard' && admin) {
       fetch('/api/admin/orders')
         .then(res => res.json())
         .then(data => setAdminOrders(data));
+      
+      fetch('/api/admin/students')
+        .then(res => res.json())
+        .then(data => setAdminStudents(data));
     }
   }, [view, admin]);
 
@@ -91,7 +127,7 @@ export default function App() {
     setIsCheckoutOpen(true);
     setPaymentStatus('idle');
     setOrderComplete(false);
-    setCheckoutStep('contact');
+    setCheckoutStep(student ? 'method' : 'contact');
     setUtr("");
   };
 
@@ -185,6 +221,40 @@ export default function App() {
     await fetch('/api/admin/logout', { method: 'POST' });
     setAdmin(null);
     setView('home');
+  };
+
+  const handleStudentLogout = async () => {
+    await fetch('/api/admin/logout', { method: 'POST' }); // Reusing logout for simplicity
+    setStudent(null);
+    setView('home');
+  };
+
+  const handleStudentAuth = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const emailVal = formData.get('email');
+    const passwordVal = formData.get('password');
+    const fullNameVal = formData.get('fullName');
+
+    const endpoint = isSignup ? '/api/student/signup' : '/api/student/login';
+    const body = isSignup 
+      ? { email: emailVal, password: passwordVal, fullName: fullNameVal }
+      : { email: emailVal, password: passwordVal };
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      setStudent(data.user);
+      setEmail(data.user.email);
+      setView('student-dashboard');
+    } else {
+      alert("Authentication failed. Please check your credentials.");
+    }
   };
 
   const adminFilteredCourses = courses
@@ -340,7 +410,7 @@ export default function App() {
       </div>
 
       {/* Stats Overview */}
-      <div className="grid md:grid-cols-4 gap-6 mb-12">
+      <div className="grid md:grid-cols-5 gap-6 mb-12">
         <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
           <div className="text-stone-400 text-xs font-bold uppercase tracking-wider mb-2">Total Revenue</div>
           <div className="text-3xl font-black text-stone-900 mb-4">₹{orderStats.revenue.toLocaleString()}</div>
@@ -349,6 +419,17 @@ export default function App() {
               initial={{ width: 0 }}
               animate={{ width: '100%' }}
               className="h-full bg-emerald-500"
+            />
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
+          <div className="text-stone-400 text-xs font-bold uppercase tracking-wider mb-2">Total Students</div>
+          <div className="text-3xl font-black text-stone-900 mb-4">{adminStudents.length}</div>
+          <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+            <motion.div 
+              initial={{ width: 0 }}
+              animate={{ width: '100%' }}
+              className="h-full bg-blue-500"
             />
           </div>
         </div>
@@ -539,6 +620,39 @@ export default function App() {
                 <div className="text-center py-12 text-stone-400">
                   <Package className="w-12 h-12 mx-auto mb-4 opacity-20" />
                   <p>No orders yet</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-stone-100">
+              <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-emerald-600" /> Registered Students
+              </h2>
+            </div>
+            <div className="p-6 space-y-4 max-h-[400px] overflow-y-auto">
+              {adminStudents.map(s => (
+                <div key={s.id} className="flex items-center justify-between p-4 bg-stone-50 rounded-2xl border border-stone-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 font-bold">
+                      {s.full_name.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="font-bold text-stone-900 text-sm">{s.full_name}</div>
+                      <div className="text-xs text-stone-500">{s.email}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] font-bold text-stone-400 uppercase">Joined</div>
+                    <div className="text-xs text-stone-900">{new Date(s.created_at).toLocaleDateString()}</div>
+                  </div>
+                </div>
+              ))}
+              {adminStudents.length === 0 && (
+                <div className="text-center py-12 text-stone-400">
+                  <Users className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                  <p>No students registered yet</p>
                 </div>
               )}
             </div>
@@ -757,15 +871,260 @@ export default function App() {
               >
                 <Search className="w-5 h-5" />
               </button>
-              <button className="bg-emerald-600 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-emerald-700 transition-all shadow-sm">
-                Login
-              </button>
+              {student ? (
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => setView('student-dashboard')}
+                    className="text-stone-600 hover:text-emerald-600 font-bold text-sm transition-colors flex items-center gap-2"
+                  >
+                    <User className="w-4 h-4" /> My Courses
+                  </button>
+                  <button 
+                    onClick={handleStudentLogout}
+                    className="text-stone-400 hover:text-red-600 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => setView('student-login')}
+                  className="bg-emerald-600 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-emerald-700 transition-all shadow-sm"
+                >
+                  Login
+                </button>
+              )}
             </div>
           </div>
         </div>
       </nav>
 
-      {view === 'admin-login' ? (
+      {view === 'student-login' ? (
+        <div className="min-h-[80vh] flex items-center justify-center px-4 py-20 bg-stone-50">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white p-10 rounded-3xl shadow-xl w-full max-w-md border border-stone-200"
+          >
+            <div className="text-center mb-8">
+              <div className="bg-emerald-100 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <GraduationCap className="text-emerald-600 w-8 h-8" />
+              </div>
+              <h2 className="text-2xl font-black text-stone-900">{isSignup ? 'Create Account' : 'Student Login'}</h2>
+              <p className="text-stone-500 text-sm mt-2">Access your courses and learning materials.</p>
+            </div>
+            <form onSubmit={handleStudentAuth} className="space-y-4">
+              {isSignup && (
+                <div>
+                  <label className="block text-xs font-bold text-stone-400 uppercase tracking-wider mb-1.5">Full Name</label>
+                  <input name="fullName" required className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-bold text-stone-400 uppercase tracking-wider mb-1.5">Email Address</label>
+                <input name="email" type="email" required className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-stone-400 uppercase tracking-wider mb-1.5">Password</label>
+                <input name="password" type="password" required className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+              </div>
+              <button type="submit" className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg mt-4">
+                {isSignup ? 'Sign Up' : 'Login'}
+              </button>
+            </form>
+            <div className="mt-6 text-center">
+              <button 
+                onClick={() => setIsSignup(!isSignup)}
+                className="text-sm text-stone-500 hover:text-emerald-600 font-medium transition-colors"
+              >
+                {isSignup ? 'Already have an account? Login' : "Don't have an account? Sign Up"}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      ) : view === 'student-dashboard' ? (
+        <div className="min-h-screen bg-stone-50 pt-12 pb-20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
+              <div>
+                <h1 className="text-4xl font-black text-stone-900 mb-2">Welcome back, {student?.full_name}!</h1>
+                <p className="text-stone-500">Continue your learning journey where you left off.</p>
+              </div>
+              <button 
+                onClick={() => setView('catalog')}
+                className="bg-white border border-stone-200 text-stone-900 px-6 py-3 rounded-xl font-bold hover:bg-stone-50 transition-all flex items-center gap-2 shadow-sm"
+              >
+                <Plus className="w-4 h-4" /> Browse More Courses
+              </button>
+            </div>
+
+            <div className="grid lg:grid-cols-3 gap-12">
+              <div className="lg:col-span-2 space-y-8">
+                <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-emerald-600" /> My Enrolled Courses
+                </h2>
+                
+                {studentCourses.length > 0 ? (
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {studentCourses.map(course => (
+                      <motion.div 
+                        key={course.id}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-3xl overflow-hidden border border-stone-200 shadow-sm hover:shadow-md transition-all group"
+                      >
+                        <div className="relative aspect-video">
+                          <img src={course.image_url} className="w-full h-full object-cover" alt="" />
+                          <div className="absolute inset-0 bg-stone-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <button className="bg-white text-stone-900 p-4 rounded-full shadow-xl transform scale-90 group-hover:scale-100 transition-transform">
+                              <PlayCircle className="w-8 h-8 text-emerald-600" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="p-6">
+                          <div className="flex justify-between items-start mb-4">
+                            <span className="px-2 py-1 bg-emerald-50 text-emerald-600 text-[10px] font-bold rounded uppercase tracking-wider">
+                              {course.category}
+                            </span>
+                            <span className="text-[10px] font-bold text-stone-400 uppercase">Progress: 0%</span>
+                          </div>
+                          <h3 className="font-bold text-stone-900 mb-4 line-clamp-1">{course.title}</h3>
+                          <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden mb-6">
+                            <div className="h-full bg-emerald-500 w-0" />
+                          </div>
+                          <button 
+                            onClick={() => {
+                              setSelectedCourseContent(course);
+                              setView('course-content');
+                            }}
+                            className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-bold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
+                          >
+                            Resume Learning
+                            <ArrowRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-3xl border border-stone-200 p-12 text-center">
+                    <div className="bg-stone-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <BookOpen className="w-10 h-10 text-stone-300" />
+                    </div>
+                    <h3 className="text-xl font-bold text-stone-900 mb-2">No courses yet</h3>
+                    <p className="text-stone-500 mb-8 max-w-xs mx-auto">You haven't enrolled in any courses yet. Start your journey today!</p>
+                    <button 
+                      onClick={() => setView('catalog')}
+                      className="bg-emerald-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg"
+                    >
+                      Explore Courses
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-8">
+                <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
+                  <LayoutDashboard className="w-5 h-5 text-emerald-600" /> Learning Stats
+                </h2>
+                <div className="bg-white rounded-3xl border border-stone-200 p-6 space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-emerald-100 p-3 rounded-2xl">
+                      <BookOpen className="w-6 h-6 text-emerald-600" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-black text-stone-900">{studentCourses.length}</div>
+                      <div className="text-xs font-bold text-stone-400 uppercase tracking-widest">Courses Enrolled</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="bg-blue-100 p-3 rounded-2xl">
+                      <FileText className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-black text-stone-900">0</div>
+                      <div className="text-xs font-bold text-stone-400 uppercase tracking-widest">Certificates Earned</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-emerald-600 rounded-3xl p-8 text-white relative overflow-hidden">
+                  <div className="relative z-10">
+                    <h3 className="text-xl font-bold mb-2 text-white">Scholarship Test</h3>
+                    <p className="text-emerald-100 text-sm mb-6">Take our monthly scholarship test and get up to 100% off on premium courses.</p>
+                    <button className="bg-white text-emerald-600 px-6 py-3 rounded-xl font-bold text-sm hover:bg-emerald-50 transition-all">
+                      Apply Now
+                    </button>
+                  </div>
+                  <GraduationCap className="absolute -bottom-4 -right-4 w-32 h-32 text-emerald-500/20 rotate-12" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : view === 'course-content' ? (
+        <div className="min-h-screen bg-white pt-16">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <button 
+              onClick={() => setView('student-dashboard')}
+              className="mb-8 text-stone-400 hover:text-stone-900 flex items-center gap-2 font-bold text-sm transition-colors"
+            >
+              <ArrowRight className="w-4 h-4 rotate-180" /> Back to Dashboard
+            </button>
+            
+            <div className="grid lg:grid-cols-3 gap-12">
+              <div className="lg:col-span-2 space-y-8">
+                <div className="aspect-video bg-stone-900 rounded-3xl overflow-hidden shadow-2xl relative group">
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <PlayCircle className="w-20 h-20 text-white/20 mb-4 mx-auto" />
+                      <p className="text-white/40 font-bold uppercase tracking-widest text-xs">Video Player Placeholder</p>
+                    </div>
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-black/80 to-transparent">
+                    <h2 className="text-white font-bold text-xl">{selectedCourseContent?.title} - Introduction</h2>
+                  </div>
+                </div>
+                
+                <div className="space-y-6">
+                  <h1 className="text-3xl font-black text-stone-900">{selectedCourseContent?.title}</h1>
+                  <p className="text-stone-600 leading-relaxed">{selectedCourseContent?.description}</p>
+                  
+                  <div className="flex gap-4 border-t border-stone-100 pt-8">
+                    <button className="flex-1 bg-stone-100 text-stone-900 py-4 rounded-xl font-bold hover:bg-stone-200 transition-all flex items-center justify-center gap-2">
+                      <FileText className="w-5 h-5" /> Download Notes
+                    </button>
+                    <button className="flex-1 bg-stone-100 text-stone-900 py-4 rounded-xl font-bold hover:bg-stone-200 transition-all flex items-center justify-center gap-2">
+                      <Users className="w-5 h-5" /> Discussion Forum
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-8">
+                <div className="bg-stone-50 rounded-3xl border border-stone-200 p-6">
+                  <h3 className="font-bold text-stone-900 mb-6 flex items-center gap-2">
+                    <LayoutDashboard className="w-5 h-5 text-emerald-600" /> Course Modules
+                  </h3>
+                  <div className="space-y-3">
+                    {[1, 2, 3, 4, 5].map(i => (
+                      <button key={i} className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center justify-between ${i === 1 ? 'bg-white border-emerald-500 shadow-sm' : 'bg-transparent border-transparent hover:bg-stone-100'}`}>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${i === 1 ? 'bg-emerald-600 text-white' : 'bg-stone-200 text-stone-500'}`}>
+                            {i}
+                          </div>
+                          <span className={`text-sm font-bold ${i === 1 ? 'text-stone-900' : 'text-stone-500'}`}>Module {i}: Fundamentals</span>
+                        </div>
+                        {i === 1 ? <PlayCircle className="w-4 h-4 text-emerald-600" /> : <Lock className="w-4 h-4 text-stone-300" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : view === 'admin-login' ? (
         <AdminLoginView />
       ) : view === 'admin-dashboard' ? (
         <AdminDashboardView />
