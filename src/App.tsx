@@ -27,7 +27,8 @@ import {
   Lock,
   CreditCard,
   Building2,
-  Smartphone
+  Smartphone,
+  Upload
 } from 'lucide-react';
 import { Course, Order, Admin } from './types';
 
@@ -55,6 +56,7 @@ export default function App() {
   const [adminSortBy, setAdminSortBy] = useState<keyof Course>("title");
   const [adminSortOrder, setAdminSortOrder] = useState<'asc' | 'desc'>('asc');
   const [adminCategoryFilter, setAdminCategoryFilter] = useState("All");
+  const [courseImage, setCourseImage] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/courses')
@@ -218,9 +220,14 @@ export default function App() {
       title: formData.get('title'),
       description: formData.get('description'),
       price: Number(formData.get('price')),
-      image_url: formData.get('image_url'),
+      image_url: courseImage,
       category: formData.get('category')
     };
+
+    if (!courseData.image_url) {
+      alert("Please upload an image for the course.");
+      return;
+    }
 
     const url = editingCourse ? `/api/admin/courses/${editingCourse.id}` : '/api/admin/courses';
     const method = editingCourse ? 'PUT' : 'POST';
@@ -297,6 +304,17 @@ export default function App() {
       </motion.div>
     </div>
   );
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCourseImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const AdminDashboardView = () => (
     <div className="py-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -391,6 +409,7 @@ export default function App() {
                   onClick={() => {
                     setIsAddingCourse(true);
                     setEditingCourse(null);
+                    setCourseImage(null);
                   }}
                   className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
                 >
@@ -464,6 +483,7 @@ export default function App() {
                             onClick={() => {
                               setEditingCourse(course);
                               setIsAddingCourse(true);
+                              setCourseImage(course.image_url);
                             }}
                             className="p-2 text-stone-400 hover:text-emerald-600 transition-colors"
                           >
@@ -571,8 +591,29 @@ export default function App() {
                       <input name="category" defaultValue={editingCourse?.category} required className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-xs font-bold text-stone-400 uppercase tracking-wider mb-1.5">Image URL</label>
-                      <input name="image_url" defaultValue={editingCourse?.image_url} required className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                      <label className="block text-xs font-bold text-stone-400 uppercase tracking-wider mb-1.5">Course Image</label>
+                      <div className="relative group">
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={handleImageChange}
+                          className="hidden" 
+                          id="course-image-upload"
+                        />
+                        <label 
+                          htmlFor="course-image-upload"
+                          className="flex flex-col items-center justify-center w-full h-40 bg-stone-50 border-2 border-dashed border-stone-200 rounded-2xl cursor-pointer hover:border-emerald-500 hover:bg-emerald-50/30 transition-all overflow-hidden"
+                        >
+                          {courseImage ? (
+                            <img src={courseImage} className="w-full h-full object-cover" alt="Preview" />
+                          ) : (
+                            <div className="flex flex-col items-center gap-2 text-stone-400 group-hover:text-emerald-600">
+                              <Upload className="w-8 h-8" />
+                              <span className="text-xs font-bold uppercase tracking-wider">Click to upload image</span>
+                            </div>
+                          )}
+                        </label>
+                      </div>
                     </div>
                   </div>
                   <div className="pt-6">
